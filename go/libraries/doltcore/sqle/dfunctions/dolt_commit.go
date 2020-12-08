@@ -134,6 +134,27 @@ func (d DoltCommitFunc) Eval(ctx *sql.Context, row sql.Row) (interface{}, error)
 	return h, err
 }
 
+func getDoltArgs(ctx *sql.Context, row sql.Row, children []sql.Expression) ([]string, error) {
+	args := make([]string, len(children))
+	for i := range children {
+		childVal, err := children[i].Eval(ctx, row)
+
+		if err != nil {
+			return nil, err
+		}
+
+		text, err := sql.Text.Convert(childVal)
+
+		if err != nil {
+			return nil, err
+		}
+
+		args[i] = text.(string)
+	}
+
+	return args, nil
+}
+
 func (d DoltCommitFunc) String() string {
 	childrenStrings := make([]string, len(d.children))
 
