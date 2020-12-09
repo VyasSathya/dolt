@@ -147,6 +147,55 @@ teardown() {
     server_query 0 "SET @@repo1_head=hashof('test_branch');SELECT * FROM one_pk ORDER by pk" ";pk,c1,c2\n0,None,None\n1,1,None\n2,2,2\n3,3,3"
 }
 
+@test "test manual merge" {
+    skiponwindows "Has dependencies that are missing on the Jenkins Windows installation."
+
+    cd repo1
+    start_sql_server repo1
+
+    # check that only master branch exists
+    server_query 0 "SELECT name, latest_commit_message FROM dolt_branches" "name,latest_commit_message\nmaster,Initialize data repository"
+
+    # check that new connections are set to master by default
+    server_query 0 "SELECT name, latest_commit_message FROM dolt_branches WHERE hash = @@repo1_head" "name,latest_commit_message\nmaster,Initialize data repository"
+
+    # check no tables on master
+    server_query 0 "SHOW Tables" ""
+
+    # make some changes to master and commit to branch test_branch
+    multi_query 0 "
+    SET @@repo1_head=hashof('master');
+    CREATE TABLE one_pk (
+        pk BIGINT NOT NULL COMMENT 'tag:0',
+        c1 BIGINT COMMENT 'tag:1',
+        c2 BIGINT COMMENT 'tag:2',
+        PRIMARY KEY (pk)
+    );
+    INSERT INTO one_pk (pk) VALUES (0);
+    INSERT INTO one_pk (pk,c1) VALUES (1,1);
+    INSERT INTO one_pk (pk,c1,c2) VALUES (2,2,2),(3,3,3);
+    SET @@repo1_head=commit('test commit message');
+    INSERT INTO dolt_branches (name,hash) VALUES ('test_branch', @@repo1_head);"
+
+    # validate new branch was created
+    server_query 0 "SELECT name,latest_commit_message FROM dolt_branches" "name,latest_commit_message\nmaster,Initialize data repository\ntest_branch,test commit message"
+
+    # validate no tables on master still
+    server_query 0 "SHOW tables" ""
+
+    # Merge the test_branch into master. This should a fast forward merge.
+    multi_query 0 "
+    SET @@repo1_head = MERGE('test_branch');
+    INSERT INTO dolt_branches (name, hash) VALUES('master', @@repo1_head);"
+
+    # Validate tables and data on master
+    server_query 0 "SET @@repo1_head=hashof('master');SHOW tables" ";Table\none_pk"
+    server_query 0 "SET @@repo1_head=hashof('master');SELECT * FROM one_pk ORDER by pk" ";pk,c1,c2\n0,None,None\n1,1,None\n2,2,2\n3,3,3"
+
+    # Validate the commit master matches that of test_branch (this is a fast forward) by matching commit hashes.
+    server_query 0 "select COUNT(hash) from dolt_branches where hash IN (select hash from dolt_branches WHERE name = 'test_branch')" "COUNT(dolt_branches.hash)\n2"
+}
+
 @test "test reset_hard" {
     skiponwindows "Has dependencies that are missing on the Jenkins Windows installation."
 
