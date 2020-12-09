@@ -79,7 +79,14 @@ func (cf *MergeFunc) Eval(ctx *sql.Context, row sql.Row) (interface{}, error) {
 	}
 
 	mergeRoot, _, err := merge.MergeCommits(ctx, parent, cm)
-	if err == merge.ErrFastForward {
+
+	if err != nil {
+		return nil, err
+	}
+
+	// No need to write a merge commit. if the parent can ffw to the commit coming from the branch.
+	canFF, err := parent.CanFastForwardTo(ctx, cm)
+	if canFF {
 		return cmh.String(), nil
 	}
 
