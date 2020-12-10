@@ -78,6 +78,16 @@ func (cf *MergeFunc) Eval(ctx *sql.Context, row sql.Row) (interface{}, error) {
 		return nil, err
 	}
 
+	// No need to write a merge commit, if the parent can ffw to the commit coming from the branch.
+	canFF, err := parent.CanFastForwardTo(ctx, cm)
+	if err != nil {
+		return nil, err
+	}
+
+	if canFF {
+		return cmh.String(), nil
+	}
+
 	mergeRoot, _, err := merge.MergeCommits(ctx, parent, cm)
 
 	if err != nil {
@@ -87,12 +97,6 @@ func (cf *MergeFunc) Eval(ctx *sql.Context, row sql.Row) (interface{}, error) {
 	h, err := ddb.WriteRootValue(ctx, mergeRoot)
 	if err != nil {
 		return nil, err
-	}
-
-	// No need to write a merge commit. if the parent can ffw to the commit coming from the branch.
-	canFF, err := parent.CanFastForwardTo(ctx, cm)
-	if canFF {
-		return cmh.String(), nil
 	}
 
 	commitMessage := fmt.Sprintf("SQL Generated commit merging %s into %s", ph.String(), cmh.String())
